@@ -5,47 +5,6 @@ import socket
 import threading
 import subprocess as sp 
 import time
-from watchdog.observers import Observer
-from watchdog.events import PatternMatchingEventHandler
-
-def sendFile2Host(src_path):
-    print(f'Sending file {src_path}...')
-
-def onModifiedAction(event):
-    ''' Send the file back to the host '''
-    sendFile2Host(event.src_path)
-
-def fileWatcher(directoryToWatch, filename, filepath):
-    ''' Deamon to watch on_modified event for the file that get modified
-        on occurance of the event upload the file back
-    '''
-    patterns = f'*/{filename}'
-    ignore_patterns = ""
-    ignore_directories = True
-    case_sensitive = True
-    my_event_handler = PatternMatchingEventHandler(patterns, ignore_patterns, 
-                        ignore_directories, case_sensitive)
-                    
-    my_event_handler.on_modified = onModifiedAction
-
-    # start watch 
-    # observer 
-    path = "../local_temp"
-    go_recursively = False
-    my_observer = Observer()
-    my_observer.schedule(my_event_handler, path, recursive=go_recursively)
-
-    my_observer.start()
-    # try:
-    #     while True:
-    #         time.sleep(1)
-    # except KeyboardInterrupt:
-    #     my_observer.stop()
-    #     my_observer.join()
-
-    # stop the observer on file close in editor
-    
-    my_observer.join()
 
 
 if __name__ == '__main__':
@@ -56,7 +15,6 @@ if __name__ == '__main__':
     host_send_port = 5002
     buffer_size = 1024
     separator = '<SEPARATOR>'
-    default_editor = 'code'
 
     # connect to the host as a client and receive the files
     # save the received files into local_temp dir
@@ -66,8 +24,6 @@ if __name__ == '__main__':
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((host_ip, host_recv_port))
 
-    # record of watchers
-    watchers = []
     # Always accept files from host
     while True:
         # receive file's META first
@@ -100,20 +56,11 @@ if __name__ == '__main__':
                 # file transmission is done 
                 break
             # write the file
-            # TODO: add the check for already existing files and perform 
-            # reload or another open option
             f.write(bytes_read)
         f.close()
         print(f'[+]{file_name} saved into {local_temp_dir}!!!')
-        # Open this file in default editor
-        sp.Popen([default_editor, temp_file])
+        # Open this file to any editor
+        prog_name = 'code'
+        sp.Popen([prog_name, temp_file])
 
-        # start a watcher for the file which will send file back to host on modification
-        watchers.append(threading.Thread(
-            target=fileWatcher, 
-            args=(local_temp_dir, file_name, file_path)).
-            start())
-    
-    for th in watchers:
-        th.join()
    

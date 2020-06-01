@@ -114,25 +114,16 @@ def host2localFileSendWorker(client_sock, ip, port, files2sendQ):
         # send file's meta data
         client_sock.send(bytes(file_meta, 'utf-8'))
 
-        # TODO : add a timeout for ACK
         # wait for client's ACK for metadata
         ack = client_sock.recv(buffer_size)
 
-        # Retry if BAD ACK max 3 retries
-        retry_count = 0
-        while not str(ack) == 'META_ACK':
-            retry_count += 1
-            if retry_count == 4:
-                print(f'!!! ERROR : Problem with the client !!!')
-                # TODO : stop this worker because whenever the client
-                # will connect again this worker will start again 
-                return 
-            print(f'Bad ACK from client, [{retry_count}]Retry again...')
-            # send file's meta data
-            client_sock.send(bytes(file_meta, 'utf-8'))
-            # wait for client's ACK for metadata
-            # TODO : add a timeout for ACK
-            ack = client_sock.recv(buffer_size)
+        # # Retry if BAD ACK
+        # retry_count = 0
+        # while not str(ack) == 'META_ACK':
+        #     retry_count += 1
+        #     if retry_count == 4:
+        #         print(f'Couldn\'t connect to client...')
+        #     print(f'Bad ACK from client, [{retry_count}]Retry again...')
 
         
         # send the file 
