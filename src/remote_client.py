@@ -1,56 +1,69 @@
 #!/usr/local/bin/python3
-''' Main Remote client Process '''
-
+""" remote side client process """
 import socket
 import threading
-import subprocess as sp 
+import subprocess as sp
 import time
-from watchdog.observers import Observer
-from watchdog.events import PatternMatchingEventHandler
+import os
+import sys
 
-def sendFile2Host(src_path):
-    print(f'Sending file {src_path}...')
 
-def onModifiedAction(event):
-    ''' Send the file back to the host '''
-    sendFile2Host(event.src_path)
+def fileWatcher2(file_name, file_path, file_size, file_path_on_local):
 
-def fileWatcher(directoryToWatch, filename, filepath):
-    ''' Deamon to watch on_modified event for the file that get modified
-        on occurance of the event upload the file back
-    '''
-    patterns = f'*/{filename}'
-    ignore_patterns = ""
-    ignore_directories = True
-    case_sensitive = True
-    my_event_handler = PatternMatchingEventHandler(patterns, ignore_patterns, 
-                        ignore_directories, case_sensitive)
-                    
-    my_event_handler.on_modified = onModifiedAction
+    # connect to the host
+    host_ip = '0.0.0.0'
+    host_send_port = 5002
 
-    # start watch 
-    # observer 
-    path = "../local_temp"
-    go_recursively = False
-    my_observer = Observer()
-    my_observer.schedule(my_event_handler, path, recursive=go_recursively)
+    # connect to host to send the file
+    host_send_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    host_send_sock.connect((host_ip, host_send_port))
+    print('[+] Connected to host to send files...')
 
-    my_observer.start()
-    # try:
-    #     while True:
-    #         time.sleep(1)
-    # except KeyboardInterrupt:
-    #     my_observer.stop()
-    #     my_observer.join()
+    # last modification time of the file
+    last_modified = os.path.getmtime(file_path_on_local)
+    print(f'[----] {file_name} Initial mod time: {last_modified}')
+    # monitor the change in the file
+    while True:
+        time.sleep(1)
 
-    # stop the observer on file close in editor
-    
-    my_observer.join()
+        modifed_time = os.path.getmtime(file_path_on_local)
+
+        # if changed then
+        if modifed_time > last_modified:
+            print(f'[+] file : {file_name} modified time --- {modifed_time}')
+            last_modified = modifed_time
+            try:
+                # send the Metadata
+                filemeta = f'{file_name}{separator}{file_path}{separator}{file_size}'
+                host_send_sock.send(filemeta.encode())
+
+                # receive ACK from host
+                _ = host_send_sock.recv(buffer_size).decode()
+
+                # read the file
+                fl = open(file_path_on_local, 'r')
+                file_content = fl.read()
+
+                # send the file
+                host_send_sock.sendall(file_content.encode())
+                # close file
+                fl.close()
+            except (socket.error, KeyboardInterrupt) as e:
+                print(f'[+] Error when sending file : {e}')
+                host_send_sock.close()
+                # close the file if still open
+                try:
+                    fl.close()
+                except Exception:
+                    pass
+                # come out of the loop
+                break
+    print(f'[+] Filewatcher closed for {file_name}')
 
 
 if __name__ == '__main__':
 
-    ''' host server config '''
+    # host server config
     host_ip = '0.0.0.0'
     host_recv_port = 5001
     host_send_port = 5002
@@ -61,59 +74,68 @@ if __name__ == '__main__':
     # connect to the host as a client and receive the files
     # save the received files into local_temp dir
     local_temp_dir = '../local_temp'
+    # clean the temp before receiving files
+    try:
+        os.system(f'rm {local_temp_dir}/*')
+    except Exception as e:
+        print(f'Error in cleaning temp... : {e}')
 
-    # connect to the host
+    # connect to the host to receive file
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((host_ip, host_recv_port))
 
-    # record of watchers
-    watchers = []
     # Always accept files from host
-    while True:
-        # receive file's META first
-        recv_meta_data = sock.recv(buffer_size).decode()
+    try:
+        while True:
+            sock.send('READY'.encode())
 
-        # Send ACK to host to send file 
-        sock.send(bytes('META_ACK', 'utf-8'))
+            # receive file's META first
+            recv_meta_data = sock.recv(buffer_size).decode()
+            # process metadata
+            file_name, file_path, file_size = recv_meta_data.split(separator)
+            print('metadata revieved from host')
 
-        file_name, file_path, file_size = recv_meta_data.split(separator)
+            # Send ACK to host to send file
+            sock.send('META_ACK'.encode())
 
-        file_name = file_name.strip()
-        file_path = file_path.strip()
-        file_size = int(file_size.strip())
-        print(f'[+]Receiving file...')
-        print(f'  [+]Filename : {file_name}')
-        print(f'  [+]Filepath : {file_path}')
-        print(f'  [+]Filesize : {file_size}')
+            file_name = file_name.strip()
+            file_path = file_path.strip()
+            file_size = int(file_size.strip())
+            print(f'  [+]Filename : {file_name}')
 
-        # Start receiving the file
-        temp_file = f'{local_temp_dir}/{file_name}'
-        # save the file into local temp dir
-        f = open(temp_file, 'wb')
-        total_bytes_read = 0
-        while total_bytes_read < file_size:
-            bytes_read = sock.recv(buffer_size)
-            total_bytes_read += len(bytes_read)
-            if not bytes_read:
-                # close the file 
-                f.close()
-                # file transmission is done 
-                break
-            # write the file
-            # TODO: add the check for already existing files and perform 
-            # reload or another open option
-            f.write(bytes_read)
-        f.close()
-        print(f'[+]{file_name} saved into {local_temp_dir}!!!')
-        # Open this file in default editor
-        sp.Popen([default_editor, temp_file])
+            # Start receiving the file
+            temp_file = f'{local_temp_dir}/{file_name}'
+            # save the file into local temp dir
+            f = open(temp_file, 'wb')
+            total_bytes_read = 0
+            while total_bytes_read < file_size:
+                bytes_read = sock.recv(buffer_size)
+                total_bytes_read += len(bytes_read)
+                if not bytes_read:
+                    # close the file
+                    f.close()
+                    # file transmission is done
+                    break
+                # write the file
+                f.write(bytes_read)
+            f.close()
 
-        # start a watcher for the file which will send file back to host on modification
-        watchers.append(threading.Thread(
-            target=fileWatcher, 
-            args=(local_temp_dir, file_name, file_path)).
-            start())
-    
-    for th in watchers:
-        th.join()
-   
+            # open file in default editor
+            print(temp_file)
+            sp.Popen([default_editor, temp_file])
+
+            # wait for editor to start
+            time.sleep(2)
+
+            # start a watcher on the file in a separate thread
+            # NOTE: make it as a daemon because when the main process stops, it should also stop all the threads
+            x = threading.Thread(target=fileWatcher2, daemon=True,
+                                 args=(file_name, file_path, file_size, temp_file))
+            x.start()
+
+    except (socket.error, KeyboardInterrupt) as e:
+        print(f'[+] Client got some error : {e}\n\tRestart !!!')
+        # close socket
+        sock.close()
+        # exit the client
+        sys.exit(0)
