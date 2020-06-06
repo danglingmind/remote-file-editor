@@ -16,7 +16,8 @@ if __name__ == '__main__':
         sys.exit(0)
 
     # server config
-    server_ip = '0.0.0.0'
+    # server_ip = '0.0.0.0'
+    server_ip = socket.gethostname()
     port = 5003
     buffer_size = 1024
     separator = '<SEPARATOR>'

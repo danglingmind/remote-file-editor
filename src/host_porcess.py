@@ -147,8 +147,8 @@ def local2hostListener(sock, q):
 if __name__ == '__main__':
 
     ''' ip address of the server process '''
-    TCP_IP = '0.0.0.0'
-    # TCP_IP = socket.gethostname()
+    # TCP_IP = '0.0.0.0'
+    TCP_IP = socket.gethostname()
 
     # Queue for the files and send it to remote one by one
     files2sendQ = queue.Queue()

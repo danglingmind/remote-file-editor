@@ -11,7 +11,8 @@ import sys
 def fileWatcher2(file_name, file_path, file_size, file_path_on_local):
 
     # connect to the host
-    host_ip = '0.0.0.0'
+    # host_ip = '0.0.0.0'
+    host_ip = socket.gethostname()
     host_send_port = 5002
 
     # connect to host to send the file
