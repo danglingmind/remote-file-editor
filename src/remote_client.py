@@ -34,16 +34,17 @@ def fileWatcher2(file_name, file_path, file_size, file_path_on_local):
             print(f'[+] file : {file_name} modified time --- {modifed_time}')
             last_modified = modifed_time
             try:
+                # read the modified file
+                fl = open(file_path_on_local, 'r')
+                file_content = fl.read()
+                file_size = len(file_content)
+                
                 # send the Metadata
                 filemeta = f'{file_name}{separator}{file_path}{separator}{file_size}'
                 host_send_sock.send(filemeta.encode())
 
                 # receive ACK from host
                 _ = host_send_sock.recv(buffer_size).decode()
-
-                # read the file
-                fl = open(file_path_on_local, 'r')
-                file_content = fl.read()
 
                 # send the file
                 host_send_sock.sendall(file_content.encode())
