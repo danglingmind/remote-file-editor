@@ -261,8 +261,9 @@ if __name__ == '__main__':
             print(f'  [+] Filename : {file_name}')
 
             # open file in default editor
-            sp.Popen([default_editor, temp_file])
-            if platform.system() == 'Darwin':
+            if platform.system() == 'Windows':
+                sp.Popen([default_editor, temp_file])
+            elif platform.system() == 'Darwin':
                 os.system(f'open -a {default_editor} {file_name}')
 
             # wait for editor to start
