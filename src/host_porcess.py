@@ -1,42 +1,42 @@
 #!/usr/local/bin/python3
 
-import queue
+import shutil
 import socket
 import threading
-import shutil
-
+import os
+import Queue
+import logging
+import time
 
 
 def host2hostFileRecv(client_sock, files2sendQ):
-
     separator = '<SEPARATOR>'
     BUFFER_SIZE = 1024
-
 
     # receive the file_name, file_path and file_size separated by <separator>
     rec_data = client_sock.recv(BUFFER_SIZE).decode()
     file_name, file_path, file_size = rec_data.split(separator)
-    
+
     file_name = file_name.strip()
     file_path = file_path.strip()
 
     # read the file
     f = open(file_path, 'r')
     file_content = f.read()
-   
+
     # put the file and its meta_data into queue
     files2sendQ.put((rec_data, file_content))
 
     f.close()
 
-    # print('File sent into Queue ... ')
+    logging.info('[+] File: '+file_name+' is ready to send ')
     client_sock.close()
 
 
 def local2hostFileRecv(client_sock):
     separator = '<SEPARATOR>'
     buffer_size = 1024
-    print('[+] client to host file receive...')
+
     # Always receive the file from local
     try:
         while True:
@@ -46,15 +46,16 @@ def local2hostFileRecv(client_sock):
 
             # send ACK for meta data
             client_sock.send('ACK_META'.encode())
-
             # process meta data
             file_name = file_name.strip()
             file_path = file_path.strip()
             file_size = int(file_size.strip())
-            print(f'[+] File name : {file_name}')
 
             # temp file which will be copied to the original locations
-            temp_file_path = f'../fromLocal/{file_name}'
+            if not os.path.exists('.fromLocal'):
+                os.mkdir(os.path.abspath('.fromLocal'))
+
+            temp_file_path = '.fromLocal/' + file_name
 
             f = open(temp_file_path, 'wb')
             total_bytes_read = 0
@@ -69,21 +70,28 @@ def local2hostFileRecv(client_sock):
                 # write the file
                 f.write(bytes_read)
             f.close()
-            print(f'[+] {file_name} received from client  ...')
+            logging.info('File name : '+file_name+', Recieved from remote')
 
             # copy the temp file to the original file_path
             try:
                 shutil.copy(temp_file_path, file_path)
+                # send success msg to remote
+                client_sock.send('SAVED'.encode())
+
+                logging.info('File : '+file_name+' Saved Successfully')
+
             except Exception as e:
-                print(f'Unable to copy {file_name} | Error: {e}')
+                logging.error('Unable to copy '+file_name+' | Error: '+str(e))
+                # send the error back to remote
+                client_sock.send(str(e).encode())
     except socket.error as e:
-        print(f'Error in receiving file from remote: {e}')
+        logging.error('Error in receiving file from remote: '+str(e))
         client_sock.close()
 
 
 def host2localFileSendWorker(client_sock, files2sendQ):
     buffer_size = 1024
-    print(f'[+] host to local connected...')
+
     try:
         while True:
             # receive ready signal
@@ -97,18 +105,19 @@ def host2localFileSendWorker(client_sock, files2sendQ):
             client_sock.send(file_meta.encode())
             # wait for client's ACK for metadata
             _ = client_sock.recv(buffer_size)
+
             # send the file
-            client_sock.sendall(file_content.encode())
+            client_sock.sendall(file_content)
 
             files2sendQ.task_done()
 
-    except socket.error as e:
-        print(f'[+] Client error : {e}')
+            logging.info('File sent to remote.')
+    except Exception as e:
+        logging.error('Client error : '+str(e))
         # push item back to the queue
         files2sendQ.put(item)
         files2sendQ.task_done()
         client_sock.close()
-    print('[+] host to local thread closed...')
 
 
 ''' Listeners '''
@@ -116,42 +125,71 @@ def host2localFileSendWorker(client_sock, files2sendQ):
 
 def host2hostListener(sock, q):
     sock.listen(10)
+    threads = []
     while True:
-        (cl_sock, (ip, port)) = sock.accept()
-        print(f'[+] host to host connected...')
-        # start a new thread
-        x = threading.Thread(target=host2hostFileRecv, args=(cl_sock, q))
-        x.start()
+        try:
+            (cl_sock, (ip, port)) = sock.accept()
+            # start a new thread
+            x = threading.Thread(target=host2hostFileRecv, args=(cl_sock, q))
+            threads.append(x)
+            x.start()
+        except KeyboardInterrupt as e:
+            logging.error('Caught KeyboardInterrupt , Exiting !!!')
+
+    # wait for all the threads
+    for th in threads:
+        th.join()
 
 
 def host2localListener(sock, q):
     sock.listen(10)
+    threads = []
     while True:
-        (cl_sock, (ip, port)) = sock.accept()
-        print(f'[+] host to local connected...')
-        # start a new thread
-        x = threading.Thread(target=host2localFileSendWorker, args=(cl_sock, q))
-        x.start()
+        try:
+            (cl_sock, (ip, port)) = sock.accept()
+            # start a new thread
+            x = threading.Thread(target=host2localFileSendWorker, args=(cl_sock, q))
+            threads.append(x)
+            x.start()
+        except KeyboardInterrupt as e:
+            logging.error('Caught KeyboardInterrupt , Exiting !!!')
+
+    # wait for all the threads
+    for th in threads:
+        th.join()
 
 
 def local2hostListener(sock, q):
     sock.listen(10)
+    threads = []
     while True:
-        (cl_sock, (ip, port)) = sock.accept()
-        print(f'[+] local to host connected...')
-        # start a new thread
-        x = threading.Thread(target=local2hostFileRecv, args=[cl_sock])
-        x.start()
+        try:
+            (cl_sock, (ip, port)) = sock.accept()
+            # start a new thread
+            x = threading.Thread(target=local2hostFileRecv, args=[cl_sock])
+            threads.append(x)
+            x.start()
+        except KeyboardInterrupt as e:
+            logging.error('Caught KeyboardInterrupt , Exiting !!!')
+
+    # wait for all the threads
+    for th in threads:
+        th.join()
 
 
 if __name__ == '__main__':
+    # configure logs
+    logging.FileHandler(filename='.host_process.log', mode='a', encoding=None, delay=False)
+    logging.basicConfig(filename='.host_process.log', level=logging.DEBUG)
 
-    ''' ip address of the server process '''
+    current_time = time.strftime("%H:%M:%S", time.localtime())
+    logging.info('Remote Edit Service started at '+str(current_time))
+
     # TCP_IP = '0.0.0.0'
     TCP_IP = socket.gethostname()
 
     # Queue for the files and send it to remote one by one
-    files2sendQ = queue.Queue()
+    files2sendQ = Queue.Queue()
 
     ''' HOST --> HOST '''
     host2host_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -174,6 +212,6 @@ if __name__ == '__main__':
     th2 = threading.Thread(target=local2hostListener, args=(local2host_sock, files2sendQ))
     th2.start()
 
-    # th1.join()
-    # th2.join()
-    # th3.join()
+    th1.join()
+    th2.join()
+    th3.join()
