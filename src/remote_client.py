@@ -15,7 +15,7 @@ def configSetup():
     hostIp = ''
     editor = ''
     # check the file
-    if not os.path.exists(r'.host_config.ini'):
+    if not os.path.exists(r'host_config.ini'):
         # create the file
         config.add_section('host')
         address = input('Enter the host address :').strip()
@@ -23,14 +23,18 @@ def configSetup():
         hostIp = address
 
         config.add_section('editor')
-        ed = input('Enter editor\' Executable path : ').strip()
+        if platform.system() == 'Darwin':
+            ed = input('Enter Exact Same Name of the editor as shown in Applications : ').strip()
+        elif platform.system() == 'Windows':
+            ed = input('Enter editor\'s Executable path : ').strip()
+
         config['editor'][platform.system()] = ed
         editor = ed
 
-        with open(r'.host_config.ini', 'w') as configfile:
+        with open(r'host_config.ini', 'w') as configfile:
             config.write(configfile)
     else:
-        config.read(r'.host_config.ini')
+        config.read(r'host_config.ini')
 
         # read host address
         hostIp = config['host']['address']
@@ -49,9 +53,10 @@ def configSetup():
             editor = ed
         else:
             print(f'Editor : {editor}')
+            print('Change the values in host_config.ini to use other host/editor!!')
 
         # write all the first inputs into the file
-        with open(r'.host_config.ini', 'w') as configfile:
+        with open(r'host_config.ini', 'w') as configfile:
             config.write(configfile)
 
     return hostIp, editor
@@ -121,7 +126,6 @@ def fileWatcher1(host_ip, files_rec, dir_path):
                         break
 
 
-'''
 def fileWatcher2(host_ip, file_name, file_path, files_rec, file_path_on_local):
 
     host_send_port = 5002
@@ -138,7 +142,7 @@ def fileWatcher2(host_ip, file_name, file_path, files_rec, file_path_on_local):
         time.sleep(1)
 
         modifed_time = os.path.getmtime(file_path_on_local)
-        
+
         # if changed then
         if modifed_time > last_modified:
             last_modified = modifed_time
@@ -153,14 +157,14 @@ def fileWatcher2(host_ip, file_name, file_path, files_rec, file_path_on_local):
 
                 # receive ACK from host
                 _ = host_send_sock.recv(buffer_size).decode()
-                
+
                 # send the file
                 host_send_sock.sendall(file_content.encode())
 
                 # close file
                 fl.close()
 
-                # ack for sent file 
+                # ack for sent file
                 file_ack = host_send_sock.recv(buffer_size).decode()
                 if file_ack == 'SAVED':
                     print('[+] File saved successfully!!')
@@ -177,7 +181,6 @@ def fileWatcher2(host_ip, file_name, file_path, files_rec, file_path_on_local):
                 # come out of the loop
                 break
     print(f'[+] Filewatcher closed for {file_name}')
-'''
 
 if __name__ == '__main__':
 
@@ -259,6 +262,8 @@ if __name__ == '__main__':
 
             # open file in default editor
             sp.Popen([default_editor, temp_file])
+            if platform.system() == 'Darwin':
+                os.system(f'open -a {default_editor} {file_name}')
 
             # wait for editor to start
             time.sleep(2)
