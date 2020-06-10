@@ -14,7 +14,9 @@ def host2hostFileRecv(client_sock, files2sendQ):
     BUFFER_SIZE = 1024
 
     # receive the file_name, file_path and file_size separated by <separator>
-    rec_data = client_sock.recv(BUFFER_SIZE).decode()
+    rec_data = client_sock.recv(BUFFER_SIZE).decode().strip()
+    if rec_data == '':
+        pass
     file_name, file_path, file_size = rec_data.split(separator)
 
     file_name = file_name.strip()
