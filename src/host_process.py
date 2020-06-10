@@ -41,7 +41,9 @@ def local2hostFileRecv(client_sock):
     try:
         while True:
             # receive meta data of the file
-            rec_data = client_sock.recv(buffer_size).decode()
+            rec_data = client_sock.recv(buffer_size).decode().strip()
+            if rec_data == '':
+                continue
             file_name, file_path, file_size = rec_data.split(separator)
 
             # send ACK for meta data
@@ -50,10 +52,6 @@ def local2hostFileRecv(client_sock):
             file_name = file_name.strip()
             file_path = file_path.strip()
             file_size = int(file_size.strip())
-
-            # temp file which will be copied to the original locations
-            if not os.path.exists('.fromLocal'):
-                os.mkdir(os.path.abspath('.fromLocal'))
 
             temp_file_path = '.fromLocal/' + file_name
 
@@ -184,6 +182,10 @@ if __name__ == '__main__':
 
     current_time = time.strftime("%H:%M:%S", time.localtime())
     logging.info('Remote Edit Service started at '+str(current_time))
+
+    # temp file which will be copied to the original locations
+    if not os.path.exists('.fromLocal'):
+        os.mkdir(os.path.abspath('.fromLocal'))
 
     # TCP_IP = '0.0.0.0'
     TCP_IP = socket.gethostname()
