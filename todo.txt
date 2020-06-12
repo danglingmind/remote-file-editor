@@ -1,7 +1,0 @@
-PRIORITY - 1:
--- design the watchdog architecture multithread or not ?
-
-
-1. add timeout for every recv call for every socket
-2. add socket validity check before picking up the queue's item
-3. add the check for already existing files and perform reload or another open option
