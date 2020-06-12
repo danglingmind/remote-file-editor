@@ -8,6 +8,7 @@ import subprocess as sp
 import sys
 import threading
 import time
+import logging
 
 
 def configSetup():
@@ -89,6 +90,7 @@ def fileWatcher1(host_ip, files_rec, dir_path):
                         # connect to host to send the file
                         host_send_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                         host_send_sock.connect((host_ip, host_send_port))
+                        logging.info('Connected to host')
 
                         # read the modified file
                         fl = open(file_path_on_local, 'r')
@@ -103,19 +105,20 @@ def fileWatcher1(host_ip, files_rec, dir_path):
 
                         # send the file
                         host_send_sock.sendall(file_content.encode())
-
+                        logging.info(f'File : {file_name} Sent')
                         # close file
                         fl.close()
 
                         # ack for sent file
                         file_ack = host_send_sock.recv(buffer_size).decode()
                         if file_ack == 'SAVED':
-                            print(f'[+] File : {file_name} Saved successfully!!')
+                            logging.info(f'File : {file_name} Saved successfully!!')
                         else:
-                            print(
-                                f'[+] Error while saving the file : {file_ack}\n [+][+] Resolve the issue and save it again to resend')
+                            print(f'[+] Error while saving the file : {file_ack}\n [+][+] Resolve the issue and save it again to resend')
+                            logging.error(f'Error while saving the file : {file_ack}')
                     except (socket.error, KeyboardInterrupt) as e:
                         print(f'[+] Error when sending file : {e}')
+                        logging.error(f'Error when sending file : {e}')
                         host_send_sock.close()
                         # close the file if still open
                         try:
@@ -182,8 +185,22 @@ def fileWatcher2(host_ip, file_name, file_path, files_rec, file_path_on_local):
                 break
     print(f'[+] Filewatcher closed for {file_name}')
 
+
+def openFile(filepath, default_editor):
+    try:
+        if platform.system() == 'Windows':
+            sp.Popen([default_editor, filepath])
+        elif platform.system() == 'Darwin':
+            os.system(f'open -a \'{default_editor}\' {filepath}')
+    except Exception as e:
+        print(f'[!] Could not open the file {e}')
+        logging.error(f'Could not open the file {e}')
+
+
 if __name__ == '__main__':
 
+    logging.basicConfig(filename='.remote_client.log', filemode='a', format='%(asctime)s.%(msecs)03d %(levelname)s {%(module)s} [%(funcName)s] %(message)s', datefmt='%Y-%m-%d,%H:%M:%S', level=logging.DEBUG)
+    logging.info('Started')
     # host and editor details
     host_ip, default_editor = configSetup()
 
@@ -199,7 +216,7 @@ if __name__ == '__main__':
     local_temp_dir = r'.local_temp'
     # check if the dir is present if not then create
     if not os.path.exists(local_temp_dir):
-        print(f'[+] Created temp folder : {local_temp_dir}')
+        logging.info(f'Created temp folder : {local_temp_dir}')
         os.mkdir(os.path.abspath(local_temp_dir))
 
     # clean the temp before receiving files
@@ -217,9 +234,10 @@ if __name__ == '__main__':
         # connect to the host to receive file
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((host_ip, host_recv_port))
-        print('[+] connected to host to receive file ')
+        logging.info('connected to host to receive file')
     except socket.error as e:
-        print(f'[!] Error in connecting to host : {e}')
+        logging.error(f'Host is down : {e}')
+        print(f'[!] Host is down : {e}')
         print('[x] Could not connect to host, BYE !!!')
         time.sleep(3)
         sys.exit(1)
@@ -230,7 +248,9 @@ if __name__ == '__main__':
             sock.send('READY'.encode())
 
             # receive file's META first
-            recv_meta_data = sock.recv(buffer_size).decode()
+            recv_meta_data = sock.recv(buffer_size).decode().strip()
+            if recv_meta_data == '':
+                continue
             # process metadata
             file_name, file_path, file_size = recv_meta_data.split(separator)
 
@@ -257,14 +277,10 @@ if __name__ == '__main__':
                 # write the file
                 f.write(bytes_read)
             f.close()
-
-            print(f'  [+] Filename : {file_name}')
+            logging.info(f'Received File : {file_name}')
 
             # open file in default editor
-            if platform.system() == 'Windows':
-                sp.Popen([default_editor, temp_file])
-            elif platform.system() == 'Darwin':
-                os.system(f'open -a {default_editor} {file_name}')
+            openFile(temp_file, default_editor)
 
             # wait for editor to start
             time.sleep(2)
@@ -272,11 +288,8 @@ if __name__ == '__main__':
             # record the file
             files_rec[file_name] = (file_path, os.path.getmtime(temp_file))
 
-            # x = threading.Thread(target=fileWatcher2, daemon=True,
-            #                      args=(host_ip, file_name, file_path, files_rec, temp_file))
-            # x.start()
-
         except (socket.error, KeyboardInterrupt) as e:
+            logging.error(f'Client got some error : {e}')
             print(f'[!] Client got some error : {e}')
             # close socket
             sock.close()
@@ -293,9 +306,11 @@ if __name__ == '__main__':
                         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                         sock.connect((host_ip, host_recv_port))
                         print(f'[+] Connected to host...')
+                        logging.info('Connected to host')
                         break
                     except socket.error as err:
-                        print(f'[!] Client got some error : {err}')
+                        print(f'[!] Could not connect to host: {err}')
+                        logging.error(f'Could not connect to host: {err}')
                         continue
                 else:
                     continue
