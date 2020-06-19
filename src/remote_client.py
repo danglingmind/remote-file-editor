@@ -10,6 +10,7 @@ import time
 import logging
 from platform import system
 import queue
+import select
 
 
 class NewHostConnection:
@@ -35,7 +36,7 @@ class NewHostConnection:
         try:
             # create a new connection before closing the existing one
             new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            new_sock.connect((self.host_sock, self.port))
+            new_sock.connect((self.host_ip, self.port))
             # close existing socket
             self.host_sock.close()
             # set the new one
@@ -46,19 +47,6 @@ class NewHostConnection:
             self.connected = False
             print('Error: ' + str(e))
 
-    def _refresh_daemon(self, interval: int):
-        while self.__refresh_flag:
-            # after interval time reconnect, which will basically refresh the socket
-            time.sleep(3)
-            if time.time() - self.__connection_time > interval:
-                self.reconnect()
-
-    def refresh(self, interval: int):
-        self.__refresh_flag = True
-        # initiate a daemon which will refresh the connection after the interval which is provided
-        th = threading.Thread(target=self._refresh_daemon(), daemon=True, args=[interval])
-        th.start()
-
     def stop_refresh(self):
         self.__refresh_flag = False
 
@@ -66,11 +54,7 @@ class NewHostConnection:
         self.connected = False
         self.host_sock.close()
 
-#TODO: add buffer size into config file
-#TODO  add separator into config file
-#TODO  :  upstream port to config file
-#TODO  :  downstream port to config file
-#TODO  :  local_temp dir to config file
+
 class Config:
     file_path = ''
     editor_mac = ''
@@ -92,18 +76,59 @@ class Config:
         if os.path.exists(file_path):
             Config.config.read(file_path)
 
-            address = Config.config['host']['address']
-            if len(address) == 0:
-                hIp = input('Enter host IP : ')
-                Config.config['host']['address'] = hIp.strip()
+            # host address
+            if len(Config.config['host']['address']) == 0:
+                Config.host_address = input('Enter host IP : ').strip()
+                Config.config['host']['address'] = Config.host_address
+            else:
+                Config.host_address = Config.config['host']['address']
 
-            editor = Config.config['editor'][Config.platform]
-            if len(editor) == 0:
-                ed = input('Enter editor path : ').strip()
-                Config.config['editor'][Config.platform] = ed
+            # editor
+            if len(Config.config['editor'][Config.platform]) == 0:
+                if Config.platform == 'Darwin':
+                    Config.editor_mac = input('Enter Exact Same Name of the editor as shown in Applications : ').strip()
+                    Config.config['editor'][Config.platform] = Config.editor_mac
+                elif Config.platform == 'Windows':
+                    Config.editor_windows = input('Enter editor\'s Executable path : ').strip()
+                    Config.config['editor'][Config.platform] = Config.editor_windows
+            else:
+                if Config.platform == 'Darwin':
+                    Config.editor_mac = Config.config['editor'][Config.platform]
+                elif Config.platform == 'Windows':
+                    Config.editor_windows = Config.config['editor'][Config.platform]
+
+            # buffer_size
+            if len(Config.config['client']['buffer_size']) == 0:
+                Config.config['client']['buffer_size'] = str(Config.buffer_size)
+            else:
+                Config.buffer_size = int(Config.config['client']['buffer_size'])
+
+            # separator
+            if len(Config.config['client']['separator']) == 0:
+                Config.config['client']['separator'] = Config.separator
+            else:
+                Config.separator = Config.config['client']['separator']
+
+            # download port
+            if len(Config.config['client']['downstream_port']) == 0:
+                Config.config['client']['downstream_port'] = str(Config.downstream_port)
+            else:
+                Config.downstream_port = int(Config.config['client']['downstream_port'])
+
+            # upload port
+            if len(Config.config['client']['upstream_port']) == 0:
+                Config.config['client']['upstream_port'] = str(Config.upstream_port)
+            else:
+                Config.upstream_port = int(Config.config['client']['upstream_port'])
+
+            # temp directory
+            if len(Config.config['client']['temp_dir']) == 0:
+                Config.config['client']['temp_dir'] = Config.temp_dir
+            else:
+                Config.temp_dir = Config.config['client']['temp_dir']
         else:
-            # if file is not present
-            # create the file
+            # if file is not present create the file
+
             Config.config.add_section('host')
             address = input('Enter the host address :').strip()
             Config.config['host']['address'] = address
@@ -118,6 +143,13 @@ class Config:
                 ed = input('Enter editor\'s Executable path : ').strip()
                 Config.editor_windows = ed
                 Config.config['editor'][Config.platform] = ed
+
+            Config.config.add_section('client')
+            Config.config['client']['buffer_size'] = str(Config.buffer_size)
+            Config.config['client']['separator'] = Config.separator
+            Config.config['client']['downstream_port'] = str(Config.downstream_port)
+            Config.config['client']['upstream_port'] = str(Config.upstream_port)
+            Config.config['client']['temp_dir'] = Config.temp_dir
 
         # write/update the config file with values
         with open(Config.file_path, 'w') as configfile:
@@ -250,6 +282,7 @@ def main():
     # connect to host on downstream port
     down_conn = NewHostConnection(Config.host_address, Config.downstream_port)
     down_conn.connect_to_host()
+
     if not down_conn.host_sock:
         print('Error could not connect to host Bye !!!')
         time.sleep(4)
@@ -263,14 +296,14 @@ def main():
 
                 # file's metadata
                 meta_data = down_conn.host_sock.recv(Config.buffer_size).decode().strip()
-                if meta_data == '':
+                if len(meta_data) == 0:
                     continue
 
                 # process metadata
                 file_name, file_path, file_size = meta_data.split(Config.separator)
                 file_name = file_name.strip()
                 file_path = file_path.strip()
-                file_size = file_size.strip()
+                file_size = int(file_size.strip())
 
                 # ACK metadata
                 down_conn.host_sock.send('META_ACK'.encode())
