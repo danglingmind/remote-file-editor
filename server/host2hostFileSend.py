@@ -2,11 +2,9 @@
 ''' Send the file to host main process which will forward the 
     file to remote client '''
 
-import socket
-import threading
-import sys
 import os
-
+import socket
+import sys
 
 if __name__ == '__main__':
     ''' ip of the server to which we need to send the file '''
@@ -39,9 +37,3 @@ if __name__ == '__main__':
         print('File sent !!!')
     except socket.error as e:
         print(f'[+] Service is not running !!!')
-
-
-
-
-
-

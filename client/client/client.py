@@ -2,17 +2,15 @@
 """ remote side client process """
 import configparser
 import os
+import queue
 import socket
 import subprocess as sp
 import sys
 import threading
 import time
-import logging
-from platform import system
-import queue
-import select
-from tkinter import messagebox
 import tkinter
+from platform import system
+from tkinter import messagebox
 
 
 class NewHostConnection:
@@ -67,7 +65,7 @@ class Config:
     separator = '<SEPARATOR>'
     downstream_port = 5001
     upstream_port = 5002
-    temp_dir = r'.local_temp'
+    temp_dir = '.local_temp'
     platform = system()
     config = configparser.ConfigParser()
 
@@ -222,7 +220,6 @@ class DirWatcher:
                     file_curr_mod_time = os.path.getmtime(file_path_local)
                     if file_curr_mod_time > file_last_mod_time:
                         self.__file_mod_time_record[fl] = file_local_path, file_curr_mod_time
-                        print(f'file is changed {fl}')
                         # file is updated add it to send_queue
                         f = open(file_path_local, 'r')
                         f_content = f.read()
@@ -260,7 +257,6 @@ class SendWorker:
 
         while self.sending:
             file_name, file_content = send_queue.get()
-            print(f'file picked {file_name}')
             file_path, _ = self.metadata_dict[file_name]
             metadata = f'{file_name}{Config.separator}{file_path}{Config.separator}{len(file_content)}'
             try:
@@ -271,7 +267,8 @@ class SendWorker:
                 if save_ack == 'SAVED':
                     print(f'[+] {file_name} is saved')
                 else:
-                    error_popup('File Save Error !', f'File Not Saved : {save_ack}\nResolve the issue on host and Save the file again.')
+                    error_popup('File Save Error !',
+                                f'File Not Saved : {save_ack}\nResolve the issue on host and Save the file again.')
             except socket.error as e:
                 for i in range(3):
                     time.sleep(2)
@@ -306,7 +303,10 @@ def open_file(file_path):
         elif system() == 'Darwin':
             os.system(f'open -a \'{Config.editor_mac}\' {file_path}')
     except Exception as e:
-        print(f'[!] Could not open the file {e}')
+        if system() == 'Darwin':
+            error_popup('File Open Error !', 'Check the Editor Name')
+        elif system() == 'Windows':
+            error_popup('File Open Error !', 'Check the Editor\'s exe path')
 
 
 def authenticate():
@@ -352,11 +352,11 @@ def main():
     # connect to host on downstream port
     down_conn = NewHostConnection(Config.host_address, Config.downstream_port)
     down_conn.connect_to_host()
-
-    if not down_conn.host_sock:
-        print('Error could not connect to host Bye !!!')
+    print(down_conn.connected)
+    if not down_conn.connected:
+        error_popup('Connection Error', 'Error could not connect to host Bye !!!')
         time.sleep(4)
-        sys.exit(1)
+        os._exit(0)
     else:
         # connected to host successfully
         while True:
@@ -423,5 +423,3 @@ if __name__ == '__main__':
             sys.exit(0)
         except SystemExit:
             os._exit(0)
-
-
