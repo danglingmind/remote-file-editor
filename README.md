@@ -10,7 +10,7 @@ Start the service on remote machine.
 
 To open a file type " $ redit file.txt 
 
-File be get open on your machine with your preferred editor, whenever you modify and save the file it will reflected on your 
+File will open on your machine with your preferred editor, whenever you modify and save the file it will reflected on your 
 remote as well.
 
 
