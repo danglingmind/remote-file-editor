@@ -1,39 +1,29 @@
 #!/usr/local/bin/python3
-''' Send the file to host main process which will forward the 
-    file to remote client '''
 
 import os
 import socket
 import sys
 
 if __name__ == '__main__':
-    ''' ip of the server to which we need to send the file '''
-    # check for the file name given as command line args
+
     if len(sys.argv) < 2:
         print('No file given !!!')
         sys.exit(0)
 
-    # server config
-    # server_ip = '0.0.0.0'
     server_ip = socket.gethostname()
     port = 5003
     buffer_size = 1024
     separator = '<SEPARATOR>'
-
     try:
-        # connect to the socket
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((server_ip, port))
 
-        # get the absolute path
-        fullpath = os.path.abspath(sys.argv[1].strip())
-        print(f'fullpath : {fullpath}')
-        file_path = fullpath
+        full_path = os.path.abspath(sys.argv[1].strip())
+        print(f'[+] File : {full_path}')
+        file_path = full_path
         file_name = file_path.split('/')[-1]
         file_size = os.path.getsize(file_path)
-
-        # first send the meta of the file ie. filename, filepath, filesize
         sock.send(f'{file_name}{separator}{file_path}{separator}{file_size}'.encode())
-        print('File sent !!!')
+        print('[+] Opening !!!')
     except socket.error as e:
         print(f'[+] Service is not running !!!')
